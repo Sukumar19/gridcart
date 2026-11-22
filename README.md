@@ -2,7 +2,7 @@
 
 Online gift store for customers across India. Shoppers can personalise selected products with their own photo, pay online with Razorpay, and track their order. The owner manages products, stock and orders from an admin dashboard.
 
-Status: in development. Design and database are documented in [docs](docs).
+Status: in development. See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for what is built, what is next and how to continue. Requirements, database design and UI design are in [docs](docs).
 
 ## Structure
 
