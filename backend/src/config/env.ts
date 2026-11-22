@@ -6,6 +6,8 @@ const schema = z.object({
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
   DATABASE_URL: z.string().url(),
   AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
+  SESSION_TTL_DAYS: z.coerce.number().int().positive().default(14),
+  ADMIN_SESSION_TTL_HOURS: z.coerce.number().int().positive().default(8),
 });
 
 const parsed = schema.safeParse(process.env);
