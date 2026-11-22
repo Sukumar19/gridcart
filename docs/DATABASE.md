@@ -244,7 +244,7 @@ Uploads use Cloudinary's private/authenticated delivery so only the owner can op
 ```
 orders
   id                   uuid           PK
-  order_number         bigint         NOT NULL UNIQUE GENERATED ALWAYS AS IDENTITY (START WITH 1001)
+  order_number         integer        NOT NULL UNIQUE DEFAULT nextval(...)                  -- Prisma SERIAL, sequence restarted at 1001; integer (not bigint) avoids BigInt in JSON
   user_id              uuid           -> users(id) ON DELETE RESTRICT        -- NULL = guest order
   access_token_hash    char(64)                                              -- guest tracking link, SHA-256
   status               order_status   NOT NULL DEFAULT 'PENDING_PAYMENT'
@@ -447,7 +447,7 @@ Rule behind the table: financial and history records (`payments`, `refunds`, any
 | Refunds never exceed the paid amount | Service, in a transaction that locks the payment row |
 | Paid orders are immutable | Service: no endpoint edits items or prices after payment |
 
-Prisma's schema language cannot express partial indexes, expression indexes or `CHECK` constraints (at the time of writing). They are added as raw SQL in the migration file: run `prisma migrate dev --create-only`, edit the SQL, then apply.
+Prisma's schema language cannot express partial indexes, expression indexes or `CHECK` constraints (at the time of writing). They are added as raw SQL in the migration file: run `prisma migrate dev --create-only`, edit the SQL, then apply. Declare every index Prisma can express (for example the trigram GIN index on `products.name`) in `schema.prisma` as well, otherwise the next `migrate dev` generates a migration that drops it.
 
 ## 8. Indexing strategy
 
@@ -566,6 +566,8 @@ stateDiagram-v2
 | 5 | `payments` | `payments`, `payment_webhook_events`, `refunds`, `shipments`, `invoices` |
 | 6 | `settings_and_auth` | `store_settings`, `auth_sessions`, `one_time_tokens` |
 | 7 | Seed (script, not a migration) | Admin user from environment variables, base categories, default settings, draft products imported from `assets\productPhotos` |
+
+Implemented 2026-11-22: because nothing is deployed yet, steps 1 to 6 were created as one `init` migration (`backend/prisma/migrations`). Every later change is its own migration.
 
 Workflow: `prisma migrate dev` locally, commit the migration files, `prisma migrate deploy` from CI for production. Never edit a migration that has been applied. On a live database, add columns first and remove old ones only after the code stops using them. Take a backup before risky migrations.
 
