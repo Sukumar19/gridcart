@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { prisma } from '../src/lib/prisma';
+import { slugify } from '../src/utils/slug';
 
 // Idempotent: safe to run repeatedly. Existing rows are never overwritten, so owner edits survive.
 
@@ -42,14 +43,6 @@ const PLACEHOLDER_PRICE = '100.00';
 const PLACEHOLDER_STOCK = 10;
 
 const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
 
 function parseCsv(text: string): Record<string, string>[] {
   const src = text.replace(/^\uFEFF/, '');

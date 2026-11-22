@@ -6,8 +6,10 @@ import { env } from './config/env';
 import { loadSession } from './middleware/auth';
 import { errorHandler, notFound } from './middleware/error';
 import { requireTrustedOrigin } from './middleware/same-origin';
+import { uploadRoot } from './lib/storage/local';
 import { adminRouter } from './routes/admin.routes';
 import { createAuthRouter } from './routes/auth.routes';
+import { catalogRouter } from './routes/catalog.routes';
 import { healthRouter } from './routes/health.routes';
 
 export function createApp() {
@@ -19,12 +21,22 @@ export function createApp() {
 
   app.use(helmet());
   app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
+  // Product photos are public and loaded by the frontend from another origin, so helmet's same-origin default must be relaxed here.
+  app.use(
+    '/media',
+    (_req, res, next) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      next();
+    },
+    express.static(uploadRoot, { maxAge: '7d', index: false, dotfiles: 'ignore' }),
+  );
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
   app.use('/api', requireTrustedOrigin);
   app.use(loadSession);
 
   app.use('/api/health', healthRouter);
+  app.use('/api', catalogRouter);
   app.use('/api/auth', createAuthRouter());
   app.use('/api/admin', adminRouter);
 
