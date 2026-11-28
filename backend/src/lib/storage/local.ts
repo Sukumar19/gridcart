@@ -9,6 +9,7 @@ import type { ImageStorage, StoredImage } from './index';
 
 const MAX_SIDE = 1600;
 const MAX_INPUT_PIXELS = 50_000_000;
+const ALLOWED_FORMATS = new Set(['jpeg', 'png', 'webp']);
 
 export const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
 
@@ -17,7 +18,12 @@ export const localStorageDriver: ImageStorage = {
   async save({ buffer, folder, name }) {
     let encoded: { data: Buffer; info: sharp.OutputInfo };
     try {
-      encoded = await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS })
+      const image = sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS });
+      // Decide by the real content, not by the file name or declared type: SVG, GIF, TIFF and the like are refused.
+      const { format } = await image.metadata();
+      if (!format || !ALLOWED_FORMATS.has(format)) throw new Error('unsupported format');
+
+      encoded = await image
         .rotate()
         .resize({ width: MAX_SIDE, height: MAX_SIDE, fit: 'inside', withoutEnlargement: true })
         .webp({ quality: 82 })

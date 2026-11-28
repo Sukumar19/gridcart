@@ -1,3 +1,5 @@
+import type { Express } from 'express';
+import request from 'supertest';
 import { hashPassword } from '../src/lib/password';
 import { prisma } from '../src/lib/prisma';
 
@@ -101,4 +103,66 @@ export async function createUser(overrides: { email?: string; role?: 'CUSTOMER' 
 
 export async function closeDatabase() {
   await prisma.$disconnect();
+}
+
+// A photo row without a real file, for tests that only care about the database side.
+export async function createImageRow(productId: string, opts: { primary?: boolean; sortOrder?: number } = {}) {
+  const n = ++counter;
+  return prisma.productImage.create({
+    data: {
+      productId,
+      url: `/media/test/${n}.webp`,
+      publicId: `test/${n}.webp`,
+      isPrimary: opts.primary ?? false,
+      sortOrder: opts.sortOrder ?? n,
+    },
+  });
+}
+
+const ORIGIN = 'http://localhost:3000';
+
+// A signed-in API client: every request carries the session cookie and a trusted Origin, like the real frontend.
+export async function signInAs(app: Express, email: string) {
+  const login = await request(app).post('/api/auth/login').set('Origin', ORIGIN).send({ email, password: TEST_PASSWORD });
+  const cookies = (login.headers['set-cookie'] as unknown as string[] | undefined) ?? [];
+  const cookie = cookies.map((c) => c.split(';')[0]).join('; ');
+  if (login.status !== 200 || !cookie) throw new Error(`Test sign-in failed for ${email}: ${login.status}`);
+
+  const withAuth = (req: request.Test) => req.set('Cookie', cookie).set('Origin', ORIGIN);
+  return {
+    get: (url: string) => withAuth(request(app).get(url)),
+    post: (url: string) => withAuth(request(app).post(url)),
+    put: (url: string) => withAuth(request(app).put(url)),
+    patch: (url: string) => withAuth(request(app).patch(url)),
+    delete: (url: string) => withAuth(request(app).delete(url)),
+  };
+}
+
+export type Api = Awaited<ReturnType<typeof signInAs>>;
+
+// An order with one line for the given variant, used to prove that sold products and variants are protected.
+export async function createOrderFor(productId: string, variantId: string, opts: { userId?: string; paid?: boolean } = {}) {
+  const variant = await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId }, include: { product: true } });
+  return prisma.order.create({
+    data: {
+      userId: opts.userId ?? null,
+      paymentStatus: opts.paid ? 'PAID' : 'PENDING',
+      customerEmail: 'buyer@example.com',
+      customerPhone: '+919999999999',
+      shippingAddress: { line1: '1 Test Street' },
+      subtotal: variant.price,
+      totalAmount: variant.price,
+      items: {
+        create: {
+          productId,
+          variantId,
+          productName: variant.product.name,
+          sku: variant.sku,
+          unitPrice: variant.price,
+          quantity: 1,
+          lineTotal: variant.price,
+        },
+      },
+    },
+  });
 }

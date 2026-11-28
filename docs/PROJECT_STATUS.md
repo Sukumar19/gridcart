@@ -1,14 +1,14 @@
 # Gridcart: Project Status and Handoff
 
 Read this first when starting a new session. It is written so someone with no memory of earlier work can continue.
-Last updated: 2026-11-22. Check `git log --oneline -15` for the latest commits.
+Last updated: 2026-11-28. Check `git log --oneline -15` for the latest commits.
 
 ## 0. Resume checklist
 
 1. Read this file, then [REQUIREMENTS.md](REQUIREMENTS.md), [DATABASE.md](DATABASE.md) and [DESIGN.md](DESIGN.md). They are the approved sources of truth.
 2. Run `git status` and `git log --oneline -15` in `D:\Project`. Confirm the working tree is clean.
 3. Check the toolchain (section 4) and that `backend\.env` exists (section 5). If `.env` is missing, the user must run `backend\scripts\setup-db.ps1` (it asks for the PostgreSQL superuser password in their own terminal).
-4. Run the backend tests (`npm.cmd test` in `backend`). All should pass before new work.
+4. Run the backend tests (`npm.cmd test` in `backend`). All 168 should pass (about 3 minutes) before new work.
 5. Continue with the first unfinished item in section 9 (Backlog).
 
 ## 1. What the project is
@@ -101,7 +101,17 @@ Git ignores: `assets/`, `.env*` (except `.env.example`), `node_modules`, `dist`,
 
 **Seed and scripts**: `prisma/seed.ts` is idempotent and never overwrites existing rows. `scripts/import-product-images.ts` is idempotent (skips products that already have images).
 
-**Tests**: 55 pass (auth 22, catalogue 26, storage 7), roughly 60 seconds. They use a separate `gridcart_test` database; `tests/setup-env.ts` refuses to run against any other database. Helpers: `tests/helpers.ts` (`resetDatabase`, `createUser`, `createCategory`, `createCatalogGroups`, `createProduct`). Add tests with every new feature.
+**Admin API** (`/api/admin`, ADMIN only, `Cache-Control: no-store`; code in `controllers/admin.controller.ts`, `services/admin/*`, `validators/admin.validators.ts`, `routes/admin.routes.ts`). All inputs use `z.strictObject`, so unknown fields are rejected with 400.
+- Products: `GET /products` (filters `q` name or SKU, `status`, `type`, `featured`, `personalised`, `incomplete`; `sort`; pagination; `statusCounts`), `POST /products` (always DRAFT, auto slug and SKU `GC-0001`, optional first variant, otherwise a placeholder variant at price 0), `GET|PATCH|DELETE /products/:id`, `PUT /products/:id/categories`, `POST /products/:id/publish|unpublish|archive|restore`. DELETE works only for products never ordered (otherwise 409 `HAS_ORDERS`, archive instead).
+- **Publish rule** lives in `services/admin/readiness.ts`: at least one active variant, every active variant priced above 0, at least one photo, and a GST rate (0 is allowed). Publishing fails with 400 `NOT_PUBLISHABLE` and `details` listing the issues. Edits that would break a live product (price 0, last active variant, last photo, clearing GST) are rolled back with 409 `LIVE_PRODUCT_INCOMPLETE`. `readiness` (issues and warnings) is returned with every product so the UI can show a checklist. A missing product type is only a warning.
+- Variants: `POST /products/:id/variants`, `PATCH|DELETE /products/:id/variants/:variantId`. Stock cannot be edited here (only through the inventory endpoint). Exactly one default variant is kept automatically. SKU and colour plus size must be unique (409). Cannot delete the last variant or an ordered variant.
+- Photos: `POST /products/:id/images` (multipart, field `images`, up to 8 files of 8 MB, JPG, PNG or WebP only; content is verified by decoding, so GIF, SVG and fake extensions are refused; all-or-nothing), `PUT /products/:id/images/order`, `PATCH|DELETE /products/:id/images/:imageId` (alt text, primary, link to a variant). Max 12 per product. Files are deleted with their rows.
+- Categories: `GET|POST /categories`, `PATCH|DELETE /categories/:id`. The three groups (type, occasion, recipient) can be renamed but not re-linked, deactivated or deleted. A category with products cannot be deleted (deactivate it).
+- Inventory: `GET /inventory` (states `OUT`, `LOW`, `OK`, `MADE_TO_ORDER`; filter `state`, search `q`), `POST /variants/:variantId/stock` (`mode` adjust or set, `reason` RESTOCK, ADJUSTMENT or RETURN, optional note; row-locked, never below zero, writes the ledger row in the same transaction), `GET /variants/:variantId/stock-history`.
+- Customers: `GET /customers` (search, status, order count, money spent), `GET /customers/:id`, `PATCH /customers/:id {isActive}` (blocking also revokes all their sessions). Admin accounts are not reachable here.
+- Settings: `GET /settings`, `PUT /settings/shipping|delivery|store` (camelCase in, stored snake_case, GSTIN, email, phone and PIN validated).
+
+**Tests**: see section 0 for the current count; roughly 4 minutes in total. They use a separate `gridcart_test` database; `tests/setup-env.ts` refuses to run against any other database, and uploads go to a temp folder. Helpers: `tests/helpers.ts` (`resetDatabase`, `createUser`, `createCategory`, `createCatalogGroups`, `createProduct`, `createImageRow`, `createOrderFor`, `signInAs`). Files: `auth`, `catalog`, `storage`, `admin-products`, `admin-media`, `admin-misc`. Add tests with every new feature.
 
 ## 8. What is built (frontend)
 
@@ -112,6 +122,8 @@ Only a scaffold: Next.js app with brand tokens in `app/globals.css` (Tailwind `@
 Follow the approved specs: screens and behaviour in DESIGN.md, tables and the critical algorithms in DATABASE.md section 9 (place order, confirm payment, cancel or expire, stock change, refund) and section 10 (order state machine).
 
 **Step 1: Admin catalogue API (B1) and admin product screens**
+- **Done (2026-11-28): the whole admin API** described in section 7, with tests.
+- **Still to do: the admin UI screens** for login, products (list, edit with variants, photos and a publish checklist from `readiness`), categories, inventory, customers and settings (DESIGN.md section 5), so the owner can start entering real data. Original B1 scope, for reference:
 - ADMIN-only routes under `/api/admin` (all writes already covered by the Origin check).
 - Products: list with filters, create, edit, archive (never delete products that have order history). Fields: name, slug, description, status, featured, customisation (is_customizable, max_custom_images 1 to 10, note), HSN, GST rate, categories.
 - Variants: create, edit, deactivate (sku, colour with hex, size, price, compare-at price, track inventory, stock, low-stock threshold, default).
